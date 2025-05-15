@@ -3,9 +3,9 @@ import requests
 import pandas as pd
 import time
 
-st.set_page_config(page_title="Global Stock Screener (EODHD)", layout="wide")
+st.set_page_config(page_title="Global Stock Screener (FMP)", layout="wide")
 
-st.title("🌍 Global Stock Screener - EOD Historical Data")
+st.title("🌍 Global Stock Screener - Financial Modeling Prep (FMP)")
 st.markdown("""
 Screening stocks based on:
 - **P/E < 20**
@@ -15,97 +15,87 @@ Screening stocks based on:
 - **Earnings Growth YoY > 5%**
 """)
 
-API_KEY = "6825d98dd66162.06437288"
+API_KEY = ?apikey=BAvEOX0Bmy1RSmRQwoiIjFlL2iJgyOUd
 
 exchange_map = {
-    "US": ["US"],
-    "Europe": ["LSE", "XETRA", "SW", "PA", "MI"],
-    "Asia": ["TSE", "HK", "KO"]
+    "US": "NASDAQ",
+    "Europe": "EURONEXT",
+    "Asia": "HKEX",
+    "Japan": "TSE"  # Tokyo Stock Exchange
 }
 
 region = st.selectbox("Select Region to Screen:", list(exchange_map.keys()))
+exchange = exchange_map[region]
 
 @st.cache_data(show_spinner=False)
-def get_exchange_symbols(exchange_code):
-    url = f"https://eodhistoricaldata.com/api/exchange-symbol-list/{exchange_code}?api_token={API_KEY}&type=Common+Stock"
+def get_stock_list(exchange):
+    url = f"https://financialmodelingprep.com/api/v3/stock-screener?exchange={exchange}&apikey={API_KEY}"
     r = requests.get(url)
-    try:
-        data = r.json()
-        if isinstance(data, list):
-            return data
-        else:
-            return []
-    except:
-        return []
+    return r.json()
 
 @st.cache_data(show_spinner=False)
 def get_fundamentals(symbol):
-    url = f"https://eodhistoricaldata.com/api/fundamentals/{symbol}?api_token={API_KEY}"
-    r = requests.get(url)
-    return r.json()
+    url = f"https://financialmodelingprep.com/api/v3/profile/{symbol}?apikey={API_KEY}"
+    r1 = requests.get(url).json()
+
+    url2 = f"https://financialmodelingprep.com/api/v3/key-metrics-ttm/{symbol}?apikey={API_KEY}"
+    r2 = requests.get(url2).json()
+
+    url3 = f"https://financialmodelingprep.com/api/v3/ratios-ttm/{symbol}?apikey={API_KEY}"
+    r3 = requests.get(url3).json()
+
+    url4 = f"https://financialmodelingprep.com/api/v3/income-statement-growth/{symbol}?limit=1&apikey={API_KEY}"
+    r4 = requests.get(url4).json()
+
+    return r1, r2, r3, r4
 
 results = []
 total_checked = 0
 
-st.write(f"Loading stocks from **{region}** exchanges...")
+st.write(f"Loading stocks from **{exchange}**...")
 
-for ex in exchange_map[region]:
-    symbols = get_exchange_symbols(ex)
-    if not isinstance(symbols, list):
-        continue
+stocks = get_stock_list(exchange)
 
-    for stock in symbols[:100]:  # limit to 100 per exchange
-        code = stock.get("Code")
-        name = stock.get("Name")
-        symbol = f"{code}.{ex}"
+for stock in stocks[:100]:  # limit to 100 per region
+    symbol = stock.get("symbol")
+    name = stock.get("companyName")
 
-        try:
-            data = get_fundamentals(symbol)
-            val = data.get("Valuation", {})
-            fin = data.get("Financials", {}).get("quarterly", {}).get("balance_sheet", {})
-            highlights = data.get("Highlights", {})
-            growth = data.get("Growth", {})
+    try:
+        profile, key_metrics, ratios, growth = get_fundamentals(symbol)
 
-            pe = highlights.get("PERatio")
-            debt = fin.get("totalDebt", {})
-            equity = fin.get("totalEquity", {})
-            debt_equity = None
-            if debt and equity:
-                last_debt = list(debt.values())[0]
-                last_equity = list(equity.values())[0]
-                if last_equity != 0:
-                    debt_equity = last_debt / last_equity
+        pe = float(profile[0].get("pe")) if profile and profile[0].get("pe") else None
+        roe = float(ratios[0].get("returnOnEquityTTM")) if ratios and ratios[0].get("returnOnEquityTTM") else None
+        roic = float(key_metrics[0].get("roic")) if key_metrics and key_metrics[0].get("roic") else None
+        debt_equity = float(ratios[0].get("debtEquityRatio")) if ratios and ratios[0].get("debtEquityRatio") else None
+        eps_growth = float(growth[0].get("epsgrowth")) * 100 if growth and growth[0].get("epsgrowth") else None
 
-            roe = highlights.get("ReturnOnEquityTTM")
-            roic = highlights.get("ReturnOnInvestedCapitalTTM")
-            eps_growth = growth.get("EarningsPerShare")
-
-            if None in (pe, debt_equity, roe, roic, eps_growth):
-                continue
-
-            if (
-                pe < 20 and
-                debt_equity < 0.5 and
-                roe >= 15 and
-                roic > 12 and
-                eps_growth > 5
-            ):
-                results.append({
-                    "Symbol": symbol,
-                    "Company": name,
-                    "PE": round(pe, 2),
-                    "Debt/Equity": round(debt_equity, 2),
-                    "ROE (%)": round(roe, 2),
-                    "ROIC (%)": round(roic, 2),
-                    "EPS Growth YoY (%)": round(eps_growth, 2)
-                })
-        except:
+        if None in (pe, debt_equity, roe, roic, eps_growth):
             continue
 
-        total_checked += 1
-        if total_checked % 20 == 0:
-            st.info(f"Checked {total_checked} stocks so far...")
-        time.sleep(1)  # Respect EODHD rate limits
+        if (
+            pe < 20 and
+            debt_equity < 0.5 and
+            roe >= 15 and
+            roic > 12 and
+            eps_growth > 5
+        ):
+            results.append({
+                "Symbol": symbol,
+                "Company": name,
+                "PE": round(pe, 2),
+                "Debt/Equity": round(debt_equity, 2),
+                "ROE (%)": round(roe, 2),
+                "ROIC (%)": round(roic, 2),
+                "EPS Growth YoY (%)": round(eps_growth, 2)
+            })
+
+    except:
+        continue
+
+    total_checked += 1
+    if total_checked % 20 == 0:
+        st.info(f"Checked {total_checked} stocks so far...")
+    time.sleep(0.5)  # throttle to respect FMP limits
 
 # Display results
 df = pd.DataFrame(results)
