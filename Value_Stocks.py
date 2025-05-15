@@ -15,13 +15,15 @@ Screening stocks based on:
 - **Earnings Growth YoY > 5%**
 """)
 
-API_KEY = ?apikey=BAvEOX0Bmy1RSmRQwoiIjFlL2iJgyOUd
+API_KEY = "BAvEOX0Bmy1RSmRQwoiIjFlL2iJgyOUd"  # Replace this with your actual FMP API key
 
 exchange_map = {
-    "US": "NASDAQ",
-    "Europe": "EURONEXT",
-    "Asia": "HKEX",
-    "Japan": "TSE"  # Tokyo Stock Exchange
+    "US - NASDAQ": "NASDAQ",
+    "US - NYSE": "NYSE",
+    "Europe - EURONEXT": "EURONEXT",
+    "Europe - LSE": "LSE",
+    "Asia - HKEX": "HKEX",
+    "Japan - TSE": "TSE"
 }
 
 region = st.selectbox("Select Region to Screen:", list(exchange_map.keys()))
