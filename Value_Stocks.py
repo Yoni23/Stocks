@@ -29,7 +29,14 @@ region = st.selectbox("Select Region to Screen:", list(exchange_map.keys()))
 def get_exchange_symbols(exchange_code):
     url = f"https://eodhistoricaldata.com/api/exchange-symbol-list/{exchange_code}?api_token={API_KEY}&type=Common+Stock"
     r = requests.get(url)
-    return r.json()
+    try:
+        data = r.json()
+        if isinstance(data, list):
+            return data
+        else:
+            return []
+    except:
+        return []
 
 @st.cache_data(show_spinner=False)
 def get_fundamentals(symbol):
@@ -43,9 +50,8 @@ total_checked = 0
 st.write(f"Loading stocks from **{region}** exchanges...")
 
 for ex in exchange_map[region]:
-    try:
-        symbols = get_exchange_symbols(ex)
-    except:
+    symbols = get_exchange_symbols(ex)
+    if not isinstance(symbols, list):
         continue
 
     for stock in symbols[:100]:  # limit to 100 per exchange
