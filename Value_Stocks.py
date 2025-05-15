@@ -3,9 +3,9 @@ import requests
 import pandas as pd
 import time
 
-st.set_page_config(page_title="Global Stock Screener (Finnhub)", layout="wide")
+st.set_page_config(page_title="Global Stock Screener (EODHD)", layout="wide")
 
-st.title("🌍 Global Stock Screener - Finnhub")
+st.title("🌍 Global Stock Screener - EOD Historical Data")
 st.markdown("""
 Screening stocks based on:
 - **P/E < 20**
@@ -15,48 +15,64 @@ Screening stocks based on:
 - **Earnings Growth YoY > 5%**
 """)
 
-API_KEY = "d0isuihr01qofpon3nu0d0isuihr01qofpon3nug"
+API_KEY = "6825d98dd66162.06437288"
 
-# Exchanges by region
 exchange_map = {
     "US": ["US"],
-    "Europe": ["XETR", "LSE", "SWX", "EPA", "BIT"],
-    "Asia": ["TSE", "HKEX", "KRX"]
+    "Europe": ["LSE", "XETRA", "SW", "PA", "MI"],
+    "Asia": ["TSE", "HK", "KO"]
 }
 
 region = st.selectbox("Select Region to Screen:", list(exchange_map.keys()))
-st.write(f"Loading stocks from **{region}** exchanges...")
 
 @st.cache_data(show_spinner=False)
-def get_symbols(exchange):
-    url = f"https://finnhub.io/api/v1/stock/symbol?exchange={exchange}&token={API_KEY}"
-    resp = requests.get(url)
-    return resp.json()
+def get_exchange_symbols(exchange_code):
+    url = f"https://eodhistoricaldata.com/api/exchange-symbol-list/{exchange_code}?api_token={API_KEY}&type=Common+Stock"
+    r = requests.get(url)
+    return r.json()
 
 @st.cache_data(show_spinner=False)
-def get_metrics(symbol):
-    url = f"https://finnhub.io/api/v1/stock/metric?symbol={symbol}&metric=all&token={API_KEY}"
-    resp = requests.get(url)
-    return resp.json()
+def get_fundamentals(symbol):
+    url = f"https://eodhistoricaldata.com/api/fundamentals/{symbol}?api_token={API_KEY}"
+    r = requests.get(url)
+    return r.json()
 
 results = []
 total_checked = 0
 
+st.write(f"Loading stocks from **{region}** exchanges...")
+
 for ex in exchange_map[region]:
-    symbols = get_symbols(ex)
-    for stock in symbols[:300]:  # limit per exchange for free tier
-        symbol = stock.get("symbol")
-        name = stock.get("description")
+    try:
+        symbols = get_exchange_symbols(ex)
+    except:
+        continue
+
+    for stock in symbols[:100]:  # limit to 100 per exchange
+        code = stock.get("Code")
+        name = stock.get("Name")
+        symbol = f"{code}.{ex}"
 
         try:
-            metrics = get_metrics(symbol)
-            data = metrics.get("metric", {})
+            data = get_fundamentals(symbol)
+            val = data.get("Valuation", {})
+            fin = data.get("Financials", {}).get("quarterly", {}).get("balance_sheet", {})
+            highlights = data.get("Highlights", {})
+            growth = data.get("Growth", {})
 
-            pe = data.get("peNormalizedAnnual")
-            debt_equity = data.get("totalDebt/totalEquityAnnual")
-            roe = data.get("roeAnnual")
-            roic = data.get("roicAnnual")
-            eps_growth = data.get("epsGrowth")
+            pe = highlights.get("PERatio")
+            debt = fin.get("totalDebt", {})
+            equity = fin.get("totalEquity", {})
+            debt_equity = None
+            if debt and equity:
+                last_debt = list(debt.values())[0]
+                last_equity = list(equity.values())[0]
+                if last_equity != 0:
+                    debt_equity = last_debt / last_equity
+
+            roe = highlights.get("ReturnOnEquityTTM")
+            roic = highlights.get("ReturnOnInvestedCapitalTTM")
+            eps_growth = growth.get("EarningsPerShare")
 
             if None in (pe, debt_equity, roe, roic, eps_growth):
                 continue
@@ -77,14 +93,13 @@ for ex in exchange_map[region]:
                     "ROIC (%)": round(roic, 2),
                     "EPS Growth YoY (%)": round(eps_growth, 2)
                 })
-
-        except Exception as e:
+        except:
             continue
 
         total_checked += 1
-        if total_checked % 50 == 0:
+        if total_checked % 20 == 0:
             st.info(f"Checked {total_checked} stocks so far...")
-        time.sleep(0.2)  # Respect Finnhub rate limit
+        time.sleep(1)  # Respect EODHD rate limits
 
 # Display results
 df = pd.DataFrame(results)
